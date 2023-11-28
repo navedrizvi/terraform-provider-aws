@@ -6,25 +6,30 @@ package dynamodb
 import (
 	"context"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
+	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 	"github.com/hashicorp/terraform-provider-aws/internal/conns"
-	"github.com/hashicorp/terraform-provider-aws/internal/create"
-	"github.com/hashicorp/terraform-provider-aws/names"
 )
 
 // @SDKDataSource("aws_dynamodb_table_query")
 func DataSourceTableQuery() *schema.Resource {
 	return &schema.Resource{
-		ReadContext: dataSourceTableQueryRead,
+		ReadWithoutTimeout: dataSourceTableQueryRead,
+
 		Schema: map[string]*schema.Schema{
 			"table_name": {
+				Type:     schema.TypeString,
+				Required: true,
+			},
+			"key_condition_expression": {
 				Type:     schema.TypeString,
 				Required: true,
 			},
@@ -33,11 +38,31 @@ func DataSourceTableQuery() *schema.Resource {
 				Optional: true,
 				Default:  false,
 			},
-			"items": {
-				Type:     schema.TypeList,
-				Computed: true,
-				Elem:     schema.TypeString,
-			},
+			// TODO0
+			// "items": {
+			// 	Type:     schema.TypeList,
+			// 	Computed: true,
+			// 	Elem:     schema.TypeString,
+			// },
+
+			// TODO1 -  Think more about if this would be more user friendly to accept block or map instead of an escaped JSON string. The API just takes a string. But we need to escape any quotes...This way passes the JSON as a string with all the quotes escaped:
+			// # (continued from above)
+			// #
+			// # Heredoc syntax might let us remove the quote escaping (I think?)
+			// # exclusive_start_key = <<-EOT
+			// #   {"S": "example-hash-key-12345"}
+			// #   EOT
+			// #
+			// # This does more magic than passing the start key as just a string, but may
+			// # be a cleaner interface if designed right. I'm not sure what that right way
+			// # is. Leaning towards just using a string to keep it simple. But doing it
+			// # this way might enable us to do intelligent type checking before sending
+			// # queries.
+			// #
+			// # exclusive_start_key {
+			// #   type   = "S"
+			// #   values = ["example-hash-key-12345"]
+			// # }
 			"exclusive_start_key": {
 				Type:         schema.TypeString,
 				Optional:     true,
@@ -61,14 +86,11 @@ func DataSourceTableQuery() *schema.Resource {
 				Type:     schema.TypeString,
 				Optional: true,
 			},
-			"key_condition_expression": {
-				Type:     schema.TypeString,
-				Required: false,
-			},
 			"limit": {
 				Type:     schema.TypeInt,
 				Optional: true,
 			},
+			// TODO0 - test
 			"projection_expression": {
 				Type:     schema.TypeString,
 				Optional: true,
@@ -104,24 +126,34 @@ func DataSourceTableQuery() *schema.Resource {
 				Computed: true,
 				Elem:     &schema.Schema{Type: schema.TypeString},
 			},
-			"count": {
+			"item_count": {
 				Type:     schema.TypeInt,
 				Computed: true,
 			},
 		},
 	}
 }
-
 func dataSourceTableQueryRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	conn := meta.(*conns.AWSClient).DynamoDBConn(ctx)
 
 	tableName := d.Get("table_name").(string)
+	keyConditionExpression := d.Get("key_condition_expression").(string)
 	consistentRead := d.Get("consistent_read").(bool)
+	scanIndexForward := d.Get("scan_index_forward").(bool)
 
-	exclusiveStartKey, err := ExpandTableItemAttributes(d.Get("exclusive_start_key").(string))
-	if err != nil {
-		return diag.FromErr(err)
+	in := &dynamodb.QueryInput{
+		TableName:        aws.String(tableName),
+		ConsistentRead:   aws.Bool(consistentRead),
+		ScanIndexForward: aws.Bool(scanIndexForward),
 	}
+
+	filterExpression := d.Get("filter_expression").(string)
+	indexName := d.Get("index_name").(string)
+	limit := int64(d.Get("limit").(int))
+	projectionExpression := d.Get("projection_expression").(string)
+	returnConsumedCapacity := d.Get("return_consumed_capacity").(string)
+	_select := d.Get("select").(string)
+	exclusiveStartKey, _ := ExpandTableItemAttributes(d.Get("exclusive_start_key").(string))
 
 	var expressionAttributeNames map[string]*string
 	if v, ok := d.GetOk("expression_attribute_names"); ok && len(v.(map[string]interface{})) > 0 {
@@ -132,64 +164,68 @@ func dataSourceTableQueryRead(ctx context.Context, d *schema.ResourceData, meta 
 		}
 	}
 
-	var expressionAttributeValues map[string]*dynamodb.AttributeValue
 	if v, ok := d.GetOk("expression_attribute_values"); ok && len(v.(map[string]interface{})) > 0 {
-		expressionAttributeValues = make(map[string]*dynamodb.AttributeValue)
-		for key, val := range v.(map[string]interface{}) {
-			strVal := val.(string)
-			expressionAttributeValues[key] = &dynamodb.AttributeValue{S: aws.String(strVal)}
+		expressionAttributeValues, err := dynamodbattribute.MarshalMap(v)
+		if err != nil {
+			return diag.FromErr(err)
 		}
+		if expressionAttributeValues != nil && len(expressionAttributeValues) > 0 {
+			in.ExpressionAttributeValues = expressionAttributeValues
+		}
+		log.Println("[ERROR] eAV:", expressionAttributeValues)
 	}
 
-	filterExpression := d.Get("filter_expression").(string)
-	indexName := d.Get("index_name").(string)
-	keyConditionExpression := d.Get("key_condition_expression").(string)
-	limit := int64(d.Get("limit").(int))
-	projectionExpression := d.Get("projection_expression").(string)
-
-	returnConsumedCapacity := d.Get("return_consumed_capacity").(string)
-	scanIndexForward := d.Get("scan_index_forward").(bool)
-	_select := d.Get("select").(string)
-
-	id := buildTableQueryDataSourceID(tableName, indexName, keyConditionExpression)
-	d.SetId(id)
-
-	queryInput := &dynamodb.QueryInput{
-		TableName:                 aws.String(tableName),
-		ConsistentRead:            aws.Bool(consistentRead),
-		ExclusiveStartKey:         exclusiveStartKey,
-		ExpressionAttributeNames:  expressionAttributeNames,
-		ExpressionAttributeValues: expressionAttributeValues,
-		FilterExpression:          aws.String(filterExpression),
-		IndexName:                 aws.String(indexName),
-		KeyConditionExpression:    aws.String(keyConditionExpression),
-		Limit:                     aws.Int64(limit),
-		ProjectionExpression:      aws.String(projectionExpression),
-		ReturnConsumedCapacity:    aws.String(returnConsumedCapacity),
-		ScanIndexForward:          aws.Bool(scanIndexForward),
-		Select:                    aws.String(_select),
+	if exclusiveStartKey != nil && len(exclusiveStartKey) > 0 {
+		in.ExclusiveStartKey = exclusiveStartKey
 	}
 
-	out, err := conn.QueryWithContext(ctx, queryInput)
+	if expressionAttributeNames != nil && len(expressionAttributeNames) > 0 {
+		in.ExpressionAttributeNames = expressionAttributeNames
+	}
+
+	if filterExpression != "" {
+		in.FilterExpression = aws.String(filterExpression)
+	}
+
+	if indexName != "" {
+		in.IndexName = aws.String(indexName)
+	}
+
+	if keyConditionExpression != "" {
+		in.KeyConditionExpression = aws.String(keyConditionExpression)
+	}
+
+	if limit > 0 {
+		in.Limit = aws.Int64(limit)
+	}
+
+	if projectionExpression != "" {
+		in.ProjectionExpression = aws.String(projectionExpression)
+	}
+
+	if returnConsumedCapacity != "" {
+		in.ReturnConsumedCapacity = aws.String(returnConsumedCapacity)
+	}
+
+	if _select != "" {
+		in.Select = aws.String(_select)
+	}
+
+	out, err := conn.QueryWithContext(ctx, in)
 	if err != nil {
 		return diag.FromErr(err)
 	}
 
-	items := make([]string, 0, len(out.Items))
-	for _, item := range out.Items {
-		converted, err := flattenTableItemAttributes(item)
-		if err != nil {
-			return create.DiagError(names.DynamoDB, create.ErrActionReading, DSNameTableItem, id, err)
-		}
-		items = append(items, converted)
-	}
+	log.Println("[ERROR] oooout:", out)
 
-	d.Set("items", items)
+	id := buildTableQueryDataSourceID(tableName, indexName, keyConditionExpression)
+	d.SetId(id)
+
 	d.Set("last_evaluated_key", out.LastEvaluatedKey)
 	d.Set("scanned_count", out.ScannedCount)
-	// TODO1 - test
 	d.Set("consumed_capacity", out.ConsumedCapacity)
-	d.Set("count", out.Count)
+	// count is a reserved field name, so use item_count
+	d.Set("item_count", out.Count)
 
 	return nil
 }
