@@ -17,6 +17,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 	"github.com/hashicorp/terraform-provider-aws/internal/conns"
+	"github.com/hashicorp/terraform-provider-aws/internal/flex"
 )
 
 // @SDKDataSource("aws_dynamodb_table_query")
@@ -153,15 +154,9 @@ func dataSourceTableQueryRead(ctx context.Context, d *schema.ResourceData, meta 
 	projectionExpression := d.Get("projection_expression").(string)
 	returnConsumedCapacity := d.Get("return_consumed_capacity").(string)
 	_select := d.Get("select").(string)
-	exclusiveStartKey, _ := ExpandTableItemAttributes(d.Get("exclusive_start_key").(string))
 
-	var expressionAttributeNames map[string]*string
 	if v, ok := d.GetOk("expression_attribute_names"); ok && len(v.(map[string]interface{})) > 0 {
-		expressionAttributeNames = make(map[string]*string)
-		for key, val := range v.(map[string]interface{}) {
-			strVal := val.(string)
-			expressionAttributeNames[key] = &strVal
-		}
+		in.ExpressionAttributeNames = flex.ExpandStringMap(v.(map[string]interface{}))
 	}
 
 	if v, ok := d.GetOk("expression_attribute_values"); ok && len(v.(map[string]interface{})) > 0 {
@@ -175,12 +170,9 @@ func dataSourceTableQueryRead(ctx context.Context, d *schema.ResourceData, meta 
 		log.Println("[ERROR] eAV:", expressionAttributeValues)
 	}
 
+	exclusiveStartKey, _ := ExpandTableItemAttributes(d.Get("exclusive_start_key").(string))
 	if exclusiveStartKey != nil && len(exclusiveStartKey) > 0 {
 		in.ExclusiveStartKey = exclusiveStartKey
-	}
-
-	if expressionAttributeNames != nil && len(expressionAttributeNames) > 0 {
-		in.ExpressionAttributeNames = expressionAttributeNames
 	}
 
 	if filterExpression != "" {
