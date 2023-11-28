@@ -17,7 +17,9 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 	"github.com/hashicorp/terraform-provider-aws/internal/conns"
+	"github.com/hashicorp/terraform-provider-aws/internal/create"
 	"github.com/hashicorp/terraform-provider-aws/internal/flex"
+	"github.com/hashicorp/terraform-provider-aws/names"
 )
 
 // @SDKDataSource("aws_dynamodb_table_query")
@@ -39,13 +41,13 @@ func DataSourceTableQuery() *schema.Resource {
 				Optional: true,
 				Default:  false,
 			},
-			// TODO0
-			// "items": {
-			// 	Type:     schema.TypeList,
-			// 	Computed: true,
-			// 	Elem:     schema.TypeString,
-			// },
-
+			"items": {
+				Type:     schema.TypeList,
+				Computed: true,
+				Elem: &schema.Schema{
+					Type: schema.TypeString,
+				},
+			},
 			// TODO1 -  Think more about if this would be more user friendly to accept block or map instead of an escaped JSON string. The API just takes a string. But we need to escape any quotes...This way passes the JSON as a string with all the quotes escaped:
 			// # (continued from above)
 			// #
@@ -213,9 +215,19 @@ func dataSourceTableQueryRead(ctx context.Context, d *schema.ResourceData, meta 
 	id := buildTableQueryDataSourceID(tableName, indexName, keyConditionExpression)
 	d.SetId(id)
 
+	var flattenedItems []string
+	for _, item := range out.Items {
+		flattened, err := flattenTableItemAttributes(item)
+		if err != nil {
+			return create.DiagError(names.DynamoDB, create.ErrActionReading, DSNameTableItem, id, err)
+		}
+		flattenedItems = append(flattenedItems, flattened)
+	}
+
 	d.Set("last_evaluated_key", out.LastEvaluatedKey)
 	d.Set("scanned_count", out.ScannedCount)
 	d.Set("consumed_capacity", out.ConsumedCapacity)
+	d.Set("items", flattenedItems)
 	// count is a reserved field name, so use item_count
 	d.Set("item_count", out.Count)
 

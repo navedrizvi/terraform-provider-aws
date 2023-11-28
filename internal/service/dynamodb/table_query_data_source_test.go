@@ -18,7 +18,6 @@ func TestAccDynamoDBTableQueryDataSource_basic(t *testing.T) {
 	rName := sdkacctest.RandomWithPrefix(acctest.ResourcePrefix)
 	dataSourceName := "data.aws_dynamodb_table_query.test"
 	hashKey := "hashKey"
-	// TODO0
 	itemContent := `{
 	"hashKey": {"S": "something"},
 	"one": {"N": "11111"},
@@ -41,7 +40,8 @@ func TestAccDynamoDBTableQueryDataSource_basic(t *testing.T) {
 			{
 				Config: testAccTableQueryDataSourceConfig_basic(rName, hashKey, itemContent, key),
 				Check: resource.ComposeTestCheckFunc(
-					// resource.TestCheckResourceAttrSet(dataSourceName, "items"),
+					resource.TestCheckResourceAttr(dataSourceName, "items.#", "1"),
+					acctest.CheckResourceAttrEquivalentJSON(dataSourceName, "items.0", itemContent),
 					resource.TestCheckResourceAttr(dataSourceName, "table_name", rName),
 					// TODO0
 					// resource.TestCheckResourceAttrSet(dataSourceName, "last_evaluated_key"),
@@ -90,7 +90,7 @@ data "aws_dynamodb_table_query" "test" {
   table_name                  = aws_dynamodb_table.test.name
 	key_condition_expression    = "hashKey = :hashKey"
 	expression_attribute_values = {":hashKey" : "something"}
-  depends_on            = [aws_dynamodb_table_item.test]
+  depends_on                  = [aws_dynamodb_table_item.test]
 }
 `, tableName, hashKey, hashKey, item, key, hashKey)
 }
