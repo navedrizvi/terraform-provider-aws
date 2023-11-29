@@ -5,6 +5,7 @@ package dynamodb
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"strings"
@@ -98,6 +99,7 @@ func DataSourceTableQuery() *schema.Resource {
 				Type:     schema.TypeString,
 				Optional: true,
 			},
+			// TODO0 - test
 			"return_consumed_capacity": {
 				Type:         schema.TypeString,
 				Optional:     true,
@@ -223,11 +225,19 @@ func dataSourceTableQueryRead(ctx context.Context, d *schema.ResourceData, meta 
 		}
 		flattenedItems = append(flattenedItems, flattened)
 	}
-
-	d.Set("last_evaluated_key", out.LastEvaluatedKey)
-	d.Set("scanned_count", out.ScannedCount)
-	d.Set("consumed_capacity", out.ConsumedCapacity)
 	d.Set("items", flattenedItems)
+
+	if out.LastEvaluatedKey != nil {
+		d.Set("last_evaluated_key", out.LastEvaluatedKey)
+	}
+	if out.ConsumedCapacity != nil {
+		jsonStringRepresentation, err := json.Marshal(out.ConsumedCapacity)
+		if err != nil {
+			return diag.FromErr(err)
+		}
+		d.Set("consumed_capacity", jsonStringRepresentation)
+	}
+	d.Set("scanned_count", out.ScannedCount)
 	// count is a reserved field name, so use item_count
 	d.Set("item_count", out.Count)
 
