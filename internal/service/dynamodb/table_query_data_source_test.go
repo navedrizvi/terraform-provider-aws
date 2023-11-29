@@ -51,21 +51,23 @@ func TestAccDynamoDBTableQueryDataSource_basic(t *testing.T) {
 	})
 }
 
+// TODO0 - work
+// TODO1 - refactor this to also accept other req params?
 func TestAccDynamoDBTableQueryDataSource_consumedCapacity(t *testing.T) {
 	ctx := acctest.Context(t)
 	rName := sdkacctest.RandomWithPrefix(acctest.ResourcePrefix)
 	dataSourceName := "data.aws_dynamodb_table_query.test"
 	hashKey := "hashKey"
-	itemContent := `{
-	"hashKey": {"S": "something"},
+	hashKeyValue := "something"
+	itemContent := fmt.Sprintf(`{
+	%[1]q: {"S": %[2]q},
 	"one": {"N": "11111"},
-	"two": {"N": "22222"},
-	"three": {"N": "33333"},
-	"four": {"N": "44444"}
-}`
-	key := `{
-	"hashKey": {"S": "something"}
-}`
+	"two": {"N": "22222"}
+}`, hashKey, hashKeyValue)
+	keyConditionExpression := hashKey + " = :hashKey"
+	key := fmt.Sprintf(`{
+	%[1]q: {"S": %[2]q}
+}`, hashKey, hashKeyValue)
 
 	resource.ParallelTest(t, resource.TestCase{
 		PreCheck: func() {
@@ -76,7 +78,7 @@ func TestAccDynamoDBTableQueryDataSource_consumedCapacity(t *testing.T) {
 		ProtoV5ProviderFactories: acctest.ProtoV5ProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccTableQueryDataSourceConfig_includeConsumedCapacity(rName, hashKey, itemContent, key),
+				Config: testAccTableQueryDataSourceConfig_consumedCapacity(rName, hashKey, itemContent, key, keyConditionExpression, hashKeyValue),
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr(dataSourceName, "consumed_capacity", ""),
 					resource.TestCheckResourceAttr(dataSourceName, "table_name", rName),
@@ -126,8 +128,7 @@ data "aws_dynamodb_table_query" "test" {
 `, tableName, hashKey, hashKey, item, key, keyConditionExpression, hashKeyValue)
 }
 
-// TODO0 - refactor this to also accept other req params
-func testAccTableQueryDataSourceConfig_includeConsumedCapacity(tableName, hashKey, item string, key string) string {
+func testAccTableQueryDataSourceConfig_consumedCapacity(tableName, hashKey, item, key, keyConditionExpression, hashKeyValue string) string {
 	return fmt.Sprintf(`
 resource "aws_dynamodb_table" "test" {
   name           = %[1]q
@@ -159,12 +160,12 @@ KEY
 
 data "aws_dynamodb_table_query" "test" {
   table_name                  = aws_dynamodb_table.test.name
-	key_condition_expression    = "hashKey = :hashKey"
-	expression_attribute_values = {":hashKey" : "something"}
-	return_consumed_capacity 	  = "TOTAL"
+	return_consumed_capacity    = "TOTAL"
+	key_condition_expression    = %[6]q
+	expression_attribute_values = {":hashKey": %[7]q}
   depends_on                  = [aws_dynamodb_table_item.test]
 }
-`, tableName, hashKey, hashKey, item, key, hashKey)
+`, tableName, hashKey, hashKey, item, key, keyConditionExpression, hashKeyValue)
 }
 
 // TODO0 1 works 2 doesn't... -

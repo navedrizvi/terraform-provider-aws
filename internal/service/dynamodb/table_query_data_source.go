@@ -5,9 +5,9 @@ package dynamodb
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
+	"reflect"
 	"strings"
 	"time"
 
@@ -99,7 +99,6 @@ func DataSourceTableQuery() *schema.Resource {
 				Type:     schema.TypeString,
 				Optional: true,
 			},
-			// TODO0 - test
 			"return_consumed_capacity": {
 				Type:         schema.TypeString,
 				Optional:     true,
@@ -127,7 +126,8 @@ func DataSourceTableQuery() *schema.Resource {
 				Computed: true,
 			},
 			"consumed_capacity": {
-				Type:     schema.TypeMap,
+				Type: schema.TypeMap,
+				// Type:     schema.TypeString,
 				Computed: true,
 				Elem:     &schema.Schema{Type: schema.TypeString},
 			},
@@ -231,11 +231,27 @@ func dataSourceTableQueryRead(ctx context.Context, d *schema.ResourceData, meta 
 		d.Set("last_evaluated_key", out.LastEvaluatedKey)
 	}
 	if out.ConsumedCapacity != nil {
-		jsonStringRepresentation, err := json.Marshal(out.ConsumedCapacity)
+		// jsonStringRepresentation, err := json.Marshal(out.ConsumedCapacity)
+		// Convert ConsumedCapacity to a map with struct field names as keys
+		result := make(map[string]string)
+		consumedCapacityType := reflect.TypeOf(out.ConsumedCapacity)
+		consumedCapacityValue := reflect.ValueOf(out.ConsumedCapacity)
+
+		for i := 0; i < consumedCapacityType.NumField(); i++ {
+			fieldName := consumedCapacityType.Field(i).Name
+			fieldValue := consumedCapacityValue.Field(i).Interface()
+
+			// Convert fieldValue to string (customize as needed)
+			strValue := fmt.Sprintf("%v", fieldValue)
+
+			result[fieldName] = strValue
+		}
 		if err != nil {
 			return diag.FromErr(err)
 		}
-		d.Set("consumed_capacity", jsonStringRepresentation)
+		log.Println("[ERROR] ccccccccccc:", result)
+
+		d.Set("consumed_capacity", result)
 	}
 	d.Set("scanned_count", out.ScannedCount)
 	// count is a reserved field name, so use item_count
