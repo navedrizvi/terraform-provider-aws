@@ -153,11 +153,6 @@ func DataSourceTableQuery() *schema.Resource {
 				},
 			},
 			// TODO1 - comment - handled by other -- Upto N results - repurposed
-			// "exclusive_start_key": {
-			// 	Type:         schema.TypeString,
-			// 	Optional:     true,
-			// 	ValidateFunc: validateTableItem,
-			// },
 			// TODO01 - test
 			"expression_attribute_names": {
 				Type:     schema.TypeMap,
@@ -191,13 +186,6 @@ func DataSourceTableQuery() *schema.Resource {
 				Type:     schema.TypeString,
 				Optional: true,
 			},
-			// // NOT USED
-			// "return_consumed_capacity": {
-			// 	Type:         schema.TypeString,
-			// 	Optional:     true,
-			// 	Default:      "NONE",
-			// 	ValidateFunc: validation.StringInSlice([]string{"NONE", "INDEXES", "TOTAL"}, false),
-			// },
 			// TODO01 - test
 			"scan_index_forward": {
 				Type:     schema.TypeBool,
@@ -215,10 +203,6 @@ func DataSourceTableQuery() *schema.Resource {
 				Type:     schema.TypeInt,
 				Computed: true,
 			},
-			// "consumed_capacity": {
-			// 	Type:     schema.TypeString,
-			// 	Computed: true,
-			// },
 			"item_count": {
 				Type:     schema.TypeInt,
 				Computed: true,
@@ -244,7 +228,6 @@ func dataSourceTableQueryRead(ctx context.Context, d *schema.ResourceData, meta 
 	indexName := d.Get("index_name").(string)
 	outputLimit := int64(d.Get("output_limit").(int))
 	projectionExpression := d.Get("projection_expression").(string)
-	returnConsumedCapacity := d.Get("return_consumed_capacity").(string)
 	_select := d.Get("select").(string)
 
 	if v, ok := d.GetOk("expression_attribute_names"); ok && len(v.(map[string]interface{})) > 0 {
@@ -299,10 +282,6 @@ func dataSourceTableQueryRead(ctx context.Context, d *schema.ResourceData, meta 
 		in.ProjectionExpression = aws.String(projectionExpression)
 	}
 
-	if returnConsumedCapacity != "" {
-		in.ReturnConsumedCapacity = aws.String(returnConsumedCapacity)
-	}
-
 	if _select != "" {
 		in.Select = aws.String(_select)
 	}
@@ -327,14 +306,6 @@ func dataSourceTableQueryRead(ctx context.Context, d *schema.ResourceData, meta 
 	}
 	d.Set("items", flattenedItems)
 
-	if out.ConsumedCapacity != nil {
-		jsonStringRepresentation, err := json.Marshal(out.ConsumedCapacity)
-		if err != nil {
-			return diag.FromErr(err)
-		}
-
-		d.Set("consumed_capacity", string(jsonStringRepresentation))
-	}
 	d.Set("scanned_count", out.ScannedCount)
 	// count is a reserved field name, so use item_count
 	d.Set("item_count", out.Count)
