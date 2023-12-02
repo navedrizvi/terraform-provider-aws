@@ -5,15 +5,14 @@ package dynamodb
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
-	"log"
-	"reflect"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
-	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
@@ -22,6 +21,110 @@ import (
 	"github.com/hashicorp/terraform-provider-aws/internal/flex"
 	"github.com/hashicorp/terraform-provider-aws/names"
 )
+
+type AttributeValue struct {
+	B    []byte                     `json:"B,omitempty"`
+	BOOL *bool                      `json:"BOOL,omitempty"`
+	BS   [][]byte                   `json:"BS,omitempty"`
+	L    []*AttributeValue          `json:"L,omitempty"`
+	M    map[string]*AttributeValue `json:"M,omitempty"`
+	N    *string                    `json:"N,omitempty"`
+	NS   []*string                  `json:"NS,omitempty"`
+	NULL *bool                      `json:"NULL,omitempty"`
+	S    *string                    `json:"S,omitempty"`
+	SS   []*string                  `json:"SS,omitempty"`
+}
+
+func ConvertJSONToAttributeValue(jsonStr string) (*AttributeValue, error) {
+	data := AttributeValue{}
+	unescapedJSONStr, err := strconv.Unquote(jsonStr)
+	if err != nil {
+		return nil, err
+	}
+
+	err = json.Unmarshal([]byte(unescapedJSONStr), &data)
+	if err != nil {
+		return nil, err
+	}
+	return &data, nil
+}
+
+// TODO01 - unit test all attributevalues : Unit test
+func ConvertToDynamoAttributeValue(av *AttributeValue) (*dynamodb.AttributeValue, error) {
+	if av == nil {
+		return nil, nil
+	}
+	dynamoAV := &dynamodb.AttributeValue{}
+	if av.B != nil {
+		dynamoAV.B = av.B
+	}
+
+	if av.BOOL != nil {
+		dynamoAV.BOOL = av.BOOL
+	}
+
+	if av.BS != nil {
+		var bs [][]byte
+		for _, item := range av.BS {
+			bs = append(bs, item)
+		}
+		dynamoAV.BS = bs
+	}
+
+	if av.L != nil {
+		var l []*dynamodb.AttributeValue
+		for _, item := range av.L {
+			dynamoItem, err := ConvertToDynamoAttributeValue(item)
+			if err != nil {
+				return nil, err
+			}
+			l = append(l, dynamoItem)
+		}
+		dynamoAV.L = l
+	}
+
+	if av.M != nil {
+		m := make(map[string]*dynamodb.AttributeValue)
+		for k, v := range av.M {
+			dynamoItem, err := ConvertToDynamoAttributeValue(v)
+			if err != nil {
+				return nil, err
+			}
+			m[k] = dynamoItem
+		}
+		dynamoAV.M = m
+	}
+
+	if av.N != nil {
+		dynamoAV.N = av.N
+	}
+
+	if av.NS != nil {
+		var ns []*string
+		for _, item := range av.NS {
+			ns = append(ns, item)
+		}
+		dynamoAV.NS = ns
+	}
+
+	if av.NULL != nil {
+		dynamoAV.NULL = av.NULL
+	}
+
+	if av.S != nil {
+		dynamoAV.S = av.S
+	}
+
+	if av.SS != nil {
+		var ss []*string
+		for _, item := range av.SS {
+			ss = append(ss, item)
+		}
+		dynamoAV.SS = ss
+	}
+
+	return dynamoAV, nil
+}
 
 // @SDKDataSource("aws_dynamodb_table_query")
 func DataSourceTableQuery() *schema.Resource {
@@ -49,88 +152,73 @@ func DataSourceTableQuery() *schema.Resource {
 					Type: schema.TypeString,
 				},
 			},
-			// TODO1 -  Think more about if this would be more user friendly to accept block or map instead of an escaped JSON string. The API just takes a string. But we need to escape any quotes...This way passes the JSON as a string with all the quotes escaped:
-			// # (continued from above)
-			// #
-			// # Heredoc syntax might let us remove the quote escaping (I think?)
-			// # exclusive_start_key = <<-EOT
-			// #   {"S": "example-hash-key-12345"}
-			// #   EOT
-			// #
-			// # This does more magic than passing the start key as just a string, but may
-			// # be a cleaner interface if designed right. I'm not sure what that right way
-			// # is. Leaning towards just using a string to keep it simple. But doing it
-			// # this way might enable us to do intelligent type checking before sending
-			// # queries.
-			// #
-			// # exclusive_start_key {
-			// #   type   = "S"
-			// #   values = ["example-hash-key-12345"]
-			// # }
-			"exclusive_start_key": {
-				Type:         schema.TypeString,
-				Optional:     true,
-				ValidateFunc: validateTableItem,
-			},
+			// TODO1 - comment - handled by other -- Upto N results - repurposed
+			// "exclusive_start_key": {
+			// 	Type:         schema.TypeString,
+			// 	Optional:     true,
+			// 	ValidateFunc: validateTableItem,
+			// },
+			// TODO01 - test
 			"expression_attribute_names": {
 				Type:     schema.TypeMap,
 				Optional: true,
 				Elem:     &schema.Schema{Type: schema.TypeString},
 			},
+			// TODO1 somehow print the query API call so users are aware how stuff was parsed?
+			// TODO1 comment Escaped jsonstring
 			"expression_attribute_values": {
 				Type:     schema.TypeMap,
 				Optional: true,
 				Elem:     &schema.Schema{Type: schema.TypeString},
 			},
+			// TODO01 - test
 			"filter_expression": {
 				Type:     schema.TypeString,
 				Optional: true,
 			},
+			// TODO01 - test
 			"index_name": {
 				Type:     schema.TypeString,
 				Optional: true,
 			},
-			"limit": {
+			// // TODO1 comment that this page-size limit is not being used. we use a global limit. this one is used for pagination
+			"output_limit": {
 				Type:     schema.TypeInt,
 				Optional: true,
 			},
-			// TODO0 - test
+			// TODO01 - test
 			"projection_expression": {
 				Type:     schema.TypeString,
 				Optional: true,
 			},
-			"return_consumed_capacity": {
-				Type:         schema.TypeString,
-				Optional:     true,
-				Default:      "NONE",
-				ValidateFunc: validation.StringInSlice([]string{"NONE", "INDEXES", "TOTAL"}, false),
-			},
+			// // NOT USED
+			// "return_consumed_capacity": {
+			// 	Type:         schema.TypeString,
+			// 	Optional:     true,
+			// 	Default:      "NONE",
+			// 	ValidateFunc: validation.StringInSlice([]string{"NONE", "INDEXES", "TOTAL"}, false),
+			// },
+			// TODO01 - test
 			"scan_index_forward": {
 				Type:     schema.TypeBool,
 				Optional: true,
 				Default:  true,
 			},
+			// TODO01 - test
 			"select": {
 				Type:         schema.TypeString,
 				Optional:     true,
 				Default:      "ALL_ATTRIBUTES",
 				ValidateFunc: validation.StringInSlice([]string{"ALL_ATTRIBUTES", "ALL_PROJECTED_ATTRIBUTES", "SPECIFIC_ATTRIBUTES", "COUNT"}, false),
 			},
-			"last_evaluated_key": {
-				Type:     schema.TypeMap,
-				Computed: true,
-				Elem:     &schema.Schema{Type: schema.TypeString},
-			},
 			"scanned_count": {
 				Type:     schema.TypeInt,
 				Computed: true,
 			},
-			"consumed_capacity": {
-				Type: schema.TypeMap,
-				// Type:     schema.TypeString,
-				Computed: true,
-				Elem:     &schema.Schema{Type: schema.TypeString},
-			},
+			// "consumed_capacity": {
+			// 	Type:     schema.TypeString,
+			// 	Computed: true,
+			// },
 			"item_count": {
 				Type:     schema.TypeInt,
 				Computed: true,
@@ -154,7 +242,7 @@ func dataSourceTableQueryRead(ctx context.Context, d *schema.ResourceData, meta 
 
 	filterExpression := d.Get("filter_expression").(string)
 	indexName := d.Get("index_name").(string)
-	limit := int64(d.Get("limit").(int))
+	outputLimit := int64(d.Get("output_limit").(int))
 	projectionExpression := d.Get("projection_expression").(string)
 	returnConsumedCapacity := d.Get("return_consumed_capacity").(string)
 	_select := d.Get("select").(string)
@@ -164,14 +252,30 @@ func dataSourceTableQueryRead(ctx context.Context, d *schema.ResourceData, meta 
 	}
 
 	if v, ok := d.GetOk("expression_attribute_values"); ok && len(v.(map[string]interface{})) > 0 {
-		expressionAttributeValues, err := dynamodbattribute.MarshalMap(v)
-		if err != nil {
-			return diag.FromErr(err)
+		expressionAttributeValues := flex.ExpandStringMap(v.(map[string]interface{}))
+		attributeValues := make(map[string]*dynamodb.AttributeValue)
+		for key, value := range expressionAttributeValues {
+			jsonData, err := json.Marshal(value)
+			if err != nil {
+				return diag.FromErr(err)
+			}
+			fmt.Printf("[ERROR]1 " + string(jsonData))
+			attributeValue, err := ConvertJSONToAttributeValue(string(jsonData))
+			if err != nil {
+				return diag.FromErr(err)
+			}
+			fmt.Printf("[ERROR]2 %#v\n", attributeValue)
+			dynamoAttributeValue, err := ConvertToDynamoAttributeValue(attributeValue)
+			if err != nil {
+				return diag.FromErr(err)
+			}
+			fmt.Printf("[ERROR]3 %#v\n", dynamoAttributeValue)
+			attributeValues[key] = dynamoAttributeValue
 		}
-		if expressionAttributeValues != nil && len(expressionAttributeValues) > 0 {
-			in.ExpressionAttributeValues = expressionAttributeValues
+		for key, value := range attributeValues {
+			fmt.Printf("safdsafds %s: %#v\n", key, value)
 		}
-		log.Println("[ERROR] eAV:", expressionAttributeValues)
+		in.ExpressionAttributeValues = attributeValues
 	}
 
 	exclusiveStartKey, _ := ExpandTableItemAttributes(d.Get("exclusive_start_key").(string))
@@ -191,10 +295,6 @@ func dataSourceTableQueryRead(ctx context.Context, d *schema.ResourceData, meta 
 		in.KeyConditionExpression = aws.String(keyConditionExpression)
 	}
 
-	if limit > 0 {
-		in.Limit = aws.Int64(limit)
-	}
-
 	if projectionExpression != "" {
 		in.ProjectionExpression = aws.String(projectionExpression)
 	}
@@ -207,17 +307,17 @@ func dataSourceTableQueryRead(ctx context.Context, d *schema.ResourceData, meta 
 		in.Select = aws.String(_select)
 	}
 
+	var flattenedItems []string
+	itemsProcessed := int64(0)
+
 	out, err := conn.QueryWithContext(ctx, in)
 	if err != nil {
 		return diag.FromErr(err)
 	}
 
-	log.Println("[ERROR] oooout:", out)
-
 	id := buildTableQueryDataSourceID(tableName, indexName, keyConditionExpression)
 	d.SetId(id)
 
-	var flattenedItems []string
 	for _, item := range out.Items {
 		flattened, err := flattenTableItemAttributes(item)
 		if err != nil {
@@ -227,31 +327,13 @@ func dataSourceTableQueryRead(ctx context.Context, d *schema.ResourceData, meta 
 	}
 	d.Set("items", flattenedItems)
 
-	if out.LastEvaluatedKey != nil {
-		d.Set("last_evaluated_key", out.LastEvaluatedKey)
-	}
 	if out.ConsumedCapacity != nil {
-		// jsonStringRepresentation, err := json.Marshal(out.ConsumedCapacity)
-		// Convert ConsumedCapacity to a map with struct field names as keys
-		result := make(map[string]string)
-		consumedCapacityType := reflect.TypeOf(out.ConsumedCapacity)
-		consumedCapacityValue := reflect.ValueOf(out.ConsumedCapacity)
-
-		for i := 0; i < consumedCapacityType.NumField(); i++ {
-			fieldName := consumedCapacityType.Field(i).Name
-			fieldValue := consumedCapacityValue.Field(i).Interface()
-
-			// Convert fieldValue to string (customize as needed)
-			strValue := fmt.Sprintf("%v", fieldValue)
-
-			result[fieldName] = strValue
-		}
+		jsonStringRepresentation, err := json.Marshal(out.ConsumedCapacity)
 		if err != nil {
 			return diag.FromErr(err)
 		}
-		log.Println("[ERROR] ccccccccccc:", result)
 
-		d.Set("consumed_capacity", result)
+		d.Set("consumed_capacity", string(jsonStringRepresentation))
 	}
 	d.Set("scanned_count", out.ScannedCount)
 	// count is a reserved field name, so use item_count
