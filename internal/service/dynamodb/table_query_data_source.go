@@ -182,7 +182,6 @@ func DataSourceTableQuery() *schema.Resource {
 				Type:     schema.TypeString,
 				Optional: true,
 			},
-			// TODO0 - test
 			"scan_index_forward": {
 				Type:     schema.TypeBool,
 				Optional: true,
@@ -226,7 +225,13 @@ func dataSourceTableQueryRead(ctx context.Context, d *schema.ResourceData, meta 
 	filterExpression := d.Get("filter_expression").(string)
 	indexName := d.Get("index_name").(string)
 
-	outputLimit := int64(d.Get("output_limit").(int))
+	// outputLimit, err := d.GetOk("output_limit").(int)
+	var outputLimit *int
+	if v, ok := d.GetOk("output_limit"); ok {
+		value := v.(int)
+		outputLimit = &value
+	}
+
 	projectionExpression := d.Get("projection_expression").(string)
 	_select := d.Get("select").(string)
 
@@ -278,6 +283,18 @@ func dataSourceTableQueryRead(ctx context.Context, d *schema.ResourceData, meta 
 		in.Select = aws.String(_select)
 	}
 
+	// outputLimit, ok := d.GetOk("output_limit")
+	// if !ok {
+
+	// }
+	// outputLimitInt, err := strconv.Atoi(outputLimit.(string))
+	// if err != nil {
+	// 	// Handle the error (e.g., log, return an error, etc.)
+	// 	return diag.FromErr(err)
+	// }
+	// // Assign the converted value to outputLimit
+	// outputLimit = &outputLimitInt
+
 	var flattenedItems []string
 	itemsProcessed := int64(0)
 	scannedCount := int64(0)
@@ -299,8 +316,8 @@ func dataSourceTableQueryRead(ctx context.Context, d *schema.ResourceData, meta 
 
 		scannedCount += aws.Int64Value(out.ScannedCount)
 		itemCount += aws.Int64Value(out.Count)
+		fmt.Printf("[ERROR]2 oiiiitems: %v\n", out.Items)
 		for _, item := range out.Items {
-			fmt.Printf("[ERROR]2 oiiii: %v\n", item)
 			flattened, err := flattenTableItemAttributes(item)
 			if err != nil {
 				return create.DiagError(names.DynamoDB, create.ErrActionReading, DSNameTableItem, id, err)
@@ -308,7 +325,8 @@ func dataSourceTableQueryRead(ctx context.Context, d *schema.ResourceData, meta 
 			flattenedItems = append(flattenedItems, flattened)
 
 			itemsProcessed++
-			if itemsProcessed >= outputLimit {
+			if (outputLimit != nil) && (itemsProcessed >= int64(*outputLimit)) {
+				fmt.Printf("[ERROR]iiii: %v\n", int64(*outputLimit))
 				goto ExitLoop
 			}
 		}

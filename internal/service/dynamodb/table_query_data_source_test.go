@@ -197,14 +197,13 @@ func TestAccDynamoDBTableQueryDataSource_scanIndexForward(t *testing.T) {
 	sortKeyValue1 := "sortValue1"
 	sortKeyValue2 := "sortValue2"
 	sortKeyValue3 := "sortValue3"
-	// scanIndexForward := false
-	scanIndexForward := true
+	scanIndexForward := false
 
-	expected := `{
-		"one": {"N": "11111"},
-		"two": {"N": "22222"},
-		"three": {"N": "33333"}
-	}`
+	// expected := `{
+
+	// 	{"hashKey":{"S":"something"},"one":{"N":"22222"},"sortKey":{"S":"sortValue2"}},
+	// 	{"hashKey":{"S":"something"},"one":{"N":"11111"},"sortKey":{"S":"sortValue1"}}
+	// }`
 
 	resource.ParallelTest(t, resource.TestCase{
 		PreCheck: func() {
@@ -218,7 +217,9 @@ func TestAccDynamoDBTableQueryDataSource_scanIndexForward(t *testing.T) {
 				Config: testAccTableQueryDataSourceConfig_scanIndexForward(rName, hashKey, sortKey, sortKeyValue1, sortKeyValue2, sortKeyValue3, scanIndexForward),
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr(dataSourceName, "items.#", "3"),
-					acctest.CheckResourceAttrEquivalentJSON(dataSourceName, "items.0", expected),
+					acctest.CheckResourceAttrEquivalentJSON(dataSourceName, "items.0", `{"hashKey":{"S":"something"},"three":{"N":"33333"},"sortKey":{"S":"sortValue3"}}`),
+					acctest.CheckResourceAttrEquivalentJSON(dataSourceName, "items.1", `{"hashKey":{"S":"something"},"two":{"N":"22222"},"sortKey":{"S":"sortValue2"}}`),
+					acctest.CheckResourceAttrEquivalentJSON(dataSourceName, "items.2", `{"hashKey":{"S":"something"},"one":{"N":"11111"},"sortKey":{"S":"sortValue1"}}`),
 					resource.TestCheckResourceAttr(dataSourceName, "table_name", rName),
 					resource.TestCheckResourceAttr(dataSourceName, "scan_index_forward", "false"),
 				),
@@ -407,7 +408,7 @@ data "aws_dynamodb_table_query" "test" {
 }
 
 func testAccTableQueryDataSourceConfig_scanIndexForward(tableName, hashKey, sortKey, sortKeyValue1, sortKeyValue2, sortKeyValue3 string, scanIndexForward bool) string {
-	a := fmt.Sprintf(`
+	return fmt.Sprintf(`
 resource "aws_dynamodb_table" "test" {
   name           = %q
   read_capacity  = 10
@@ -475,81 +476,4 @@ data "aws_dynamodb_table_query" "test" {
   depends_on         = [aws_dynamodb_table_item.item1, aws_dynamodb_table_item.item2, aws_dynamodb_table_item.item3]
 }
 `, tableName, hashKey, sortKey, hashKey, sortKey, sortKeyValue1, sortKeyValue2, sortKeyValue3, scanIndexForward)
-
-	fmt.Printf("[ERROR]2 AAA: %v\n", a)
-	return a
 }
-
-// func testAccTableQueryDataSourceConfig_scanIndexForward(tableName, hashKey, sortKey, sortKeyValue1, sortKeyValue2, sortKeyValue3 string, scanIndexForward bool) string {
-// 	a := fmt.Sprintf(`
-// resource "aws_dynamodb_table" "test" {
-//   name           = %[1]q
-//   read_capacity  = 10
-//   write_capacity = 10
-//   hash_key       = %[2]q
-//   range_key       = %[3]q
-
-//   attribute {
-//     name = %[2]q
-//     type = "S"
-//   }
-
-//   attribute {
-//     name = %[3]q
-//     type = "S"
-//   }
-// }
-
-// resource "aws_dynamodb_table_item" "item1" {
-//   table_name = aws_dynamodb_table.test.name
-//   hash_key   = aws_dynamodb_table.test.hash_key
-//   range_key   = aws_dynamodb_table.test.range_key
-//   item = <<ITEM
-// {
-//   "hashKey": {"S": "something"},
-//   "sortKey": {"S": "%[4]s"},
-//   "one": {"N": "11111"}
-// }
-// ITEM
-// }
-
-// resource "aws_dynamodb_table_item" "item2" {
-//   table_name = aws_dynamodb_table.test.name
-//   hash_key   = aws_dynamodb_table.test.hash_key
-//   range_key   = aws_dynamodb_table.test.range_key
-//   item = <<ITEM
-// {
-//   "hashKey": {"S": "something"},
-//   "sortKey": {"S": "%[5]s"},
-//   "two": {"N": "22222"}
-// }
-// ITEM
-// }
-
-// resource "aws_dynamodb_table_item" "item3" {
-//   table_name = aws_dynamodb_table.test.name
-//   hash_key   = aws_dynamodb_table.test.hash_key
-//   range_key   = aws_dynamodb_table.test.range_key
-//   item = <<ITEM
-// {
-//   "hashKey": {"S": "something"},
-//   "sortKey": {"S": "%[6]s"},
-//   "three": {"N": "33333"}
-// }
-// ITEM
-// }
-
-// data "aws_dynamodb_table_query" "test" {
-//   table_name                = aws_dynamodb_table.test.name
-//   key_condition_expression  = "hashKey = :hashValue"
-//   expression_attribute_values = {
-//     ":hashValue" = "{\"S\": \"something\"}"
-//   }
-//   scan_index_forward = %[7]t
-//   depends_on         = [aws_dynamodb_table_item.item1, aws_dynamodb_table_item.item2, aws_dynamodb_table_item.item3]
-// }
-// `, tableName, hashKey, sortKey, sortKeyValue1, sortKeyValue2, sortKeyValue3, scanIndexForward)
-
-// 	fmt.Printf("[ERROR]2 AAA: %v\n", a)
-// 	return a
-// }
