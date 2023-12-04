@@ -152,51 +152,45 @@ func DataSourceTableQuery() *schema.Resource {
 					Type: schema.TypeString,
 				},
 			},
-			// TODO1 - comment - handled by other -- Upto N results - repurposed
-			// TODO01 - test
 			"expression_attribute_names": {
 				Type:     schema.TypeMap,
 				Optional: true,
 				Elem:     &schema.Schema{Type: schema.TypeString},
 			},
-			// TODO1 somehow print the query API call so users are aware how stuff was parsed?
-			// TODO1 comment Escaped jsonstring
 			"expression_attribute_values": {
 				Type:     schema.TypeMap,
 				Optional: true,
 				Elem:     &schema.Schema{Type: schema.TypeString},
 			},
-			// TODO01 - test
 			"filter_expression": {
 				Type:     schema.TypeString,
 				Optional: true,
 			},
-			// TODO01 - test
+			// TODO012 - test
 			"index_name": {
 				Type:     schema.TypeString,
 				Optional: true,
 			},
 			// // TODO1 comment that this page-size limit is not being used. we use a global limit. this one is used for pagination
+			// handled by other -- Upto N results - repurposed
+			// TODO012 - test Pagination
 			"output_limit": {
 				Type:     schema.TypeInt,
 				Optional: true,
 			},
-			// TODO01 - test
 			"projection_expression": {
 				Type:     schema.TypeString,
 				Optional: true,
 			},
-			// TODO01 - test
+			// TODO0 - test
 			"scan_index_forward": {
 				Type:     schema.TypeBool,
 				Optional: true,
 				Default:  true,
 			},
-			// TODO01 - test
 			"select": {
 				Type:         schema.TypeString,
 				Optional:     true,
-				Default:      "ALL_ATTRIBUTES",
 				ValidateFunc: validation.StringInSlice([]string{"ALL_ATTRIBUTES", "ALL_PROJECTED_ATTRIBUTES", "SPECIFIC_ATTRIBUTES", "COUNT"}, false),
 			},
 			"scanned_count": {
@@ -204,6 +198,11 @@ func DataSourceTableQuery() *schema.Resource {
 				Computed: true,
 			},
 			"item_count": {
+				Type:     schema.TypeInt,
+				Computed: true,
+			},
+			// TODO01 - test handling pagination...
+			"query_count": {
 				Type:     schema.TypeInt,
 				Computed: true,
 			},
@@ -226,6 +225,7 @@ func dataSourceTableQueryRead(ctx context.Context, d *schema.ResourceData, meta 
 
 	filterExpression := d.Get("filter_expression").(string)
 	indexName := d.Get("index_name").(string)
+
 	outputLimit := int64(d.Get("output_limit").(int))
 	projectionExpression := d.Get("projection_expression").(string)
 	_select := d.Get("select").(string)
@@ -242,28 +242,20 @@ func dataSourceTableQueryRead(ctx context.Context, d *schema.ResourceData, meta 
 			if err != nil {
 				return diag.FromErr(err)
 			}
-			fmt.Printf("[ERROR]1 " + string(jsonData))
 			attributeValue, err := ConvertJSONToAttributeValue(string(jsonData))
 			if err != nil {
 				return diag.FromErr(err)
 			}
-			fmt.Printf("[ERROR]2 %#v\n", attributeValue)
 			dynamoAttributeValue, err := ConvertToDynamoAttributeValue(attributeValue)
 			if err != nil {
 				return diag.FromErr(err)
 			}
-			fmt.Printf("[ERROR]3 %#v\n", dynamoAttributeValue)
 			attributeValues[key] = dynamoAttributeValue
 		}
 		for key, value := range attributeValues {
 			fmt.Printf("safdsafds %s: %#v\n", key, value)
 		}
 		in.ExpressionAttributeValues = attributeValues
-	}
-
-	exclusiveStartKey, _ := ExpandTableItemAttributes(d.Get("exclusive_start_key").(string))
-	if exclusiveStartKey != nil && len(exclusiveStartKey) > 0 {
-		in.ExclusiveStartKey = exclusiveStartKey
 	}
 
 	if filterExpression != "" {
@@ -288,32 +280,57 @@ func dataSourceTableQueryRead(ctx context.Context, d *schema.ResourceData, meta 
 
 	var flattenedItems []string
 	itemsProcessed := int64(0)
-
-	out, err := conn.QueryWithContext(ctx, in)
-	if err != nil {
-		return diag.FromErr(err)
-	}
-
+	scannedCount := int64(0)
+	queryCount := int64(0)
+	itemCount := int64(0)
 	id := buildTableQueryDataSourceID(tableName, indexName, keyConditionExpression)
 	d.SetId(id)
 
-	for _, item := range out.Items {
-		flattened, err := flattenTableItemAttributes(item)
+	for {
+		out, err := conn.QueryWithContext(ctx, in)
+		fmt.Printf("[ERROR]2 out: %v\n", out.Items)
+		fmt.Printf("[ERROR]2 out: %v\n", out.Count)
+		fmt.Printf("[ERROR]2 out: %v\n", out.ScannedCount)
+
+		queryCount += 1
 		if err != nil {
-			return create.DiagError(names.DynamoDB, create.ErrActionReading, DSNameTableItem, id, err)
+			return diag.FromErr(err)
 		}
-		flattenedItems = append(flattenedItems, flattened)
+
+		scannedCount += aws.Int64Value(out.ScannedCount)
+		itemCount += aws.Int64Value(out.Count)
+		for _, item := range out.Items {
+			fmt.Printf("[ERROR]2 oiiii: %v\n", item)
+			flattened, err := flattenTableItemAttributes(item)
+			if err != nil {
+				return create.DiagError(names.DynamoDB, create.ErrActionReading, DSNameTableItem, id, err)
+			}
+			flattenedItems = append(flattenedItems, flattened)
+
+			itemsProcessed++
+			if itemsProcessed >= outputLimit {
+				goto ExitLoop
+			}
+		}
+		in.ExclusiveStartKey = out.LastEvaluatedKey
+
+		if out.LastEvaluatedKey == nil || len(out.LastEvaluatedKey) == 0 {
+			break
+		}
 	}
+ExitLoop:
 	d.Set("items", flattenedItems)
-
-	d.Set("scanned_count", out.ScannedCount)
-	// count is a reserved field name, so use item_count
-	d.Set("item_count", out.Count)
-
+	d.Set("item_count", itemCount)
+	d.Set("query_count", queryCount)
+	d.Set("scanned_count", scannedCount)
+	fmt.Printf("[ERROR]2 items: %v\n", flattenedItems)
+	fmt.Printf("[ERROR]2 item_count: %v\n", itemCount)
+	fmt.Printf("[ERROR]2 query_count: %v\n", queryCount)
+	fmt.Printf("[ERROR]2 scanned_count: %v\n", scannedCount)
 	return nil
 }
 
-func buildTableQueryDataSourceID(tableName string, indexName string, keyConditionExpression string) string {
+func buildTableQueryDataSourceID(tableName, indexName, keyConditionExpression string) string {
 	id := []string{tableName}
 
 	if keyConditionExpression != "" {
