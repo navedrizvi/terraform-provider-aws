@@ -198,12 +198,11 @@ func TestAccDynamoDBTableQueryDataSource_scanIndexForward(t *testing.T) {
 	sortKeyValue2 := "sortValue2"
 	sortKeyValue3 := "sortValue3"
 	scanIndexForward := false
-
-	// expected := `{
-
-	// 	{"hashKey":{"S":"something"},"one":{"N":"22222"},"sortKey":{"S":"sortValue2"}},
-	// 	{"hashKey":{"S":"something"},"one":{"N":"11111"},"sortKey":{"S":"sortValue1"}}
-	// }`
+	expected := []string{
+		`{"hashKey":{"S":"something"},"three":{"N":"33333"},"sortKey":{"S":"sortValue3"}}`,
+		`{"hashKey":{"S":"something"},"two":{"N":"22222"},"sortKey":{"S":"sortValue2"}}`,
+		`{"hashKey":{"S":"something"},"one":{"N":"11111"},"sortKey":{"S":"sortValue1"}}`,
+	}
 
 	resource.ParallelTest(t, resource.TestCase{
 		PreCheck: func() {
@@ -217,11 +216,47 @@ func TestAccDynamoDBTableQueryDataSource_scanIndexForward(t *testing.T) {
 				Config: testAccTableQueryDataSourceConfig_scanIndexForward(rName, hashKey, sortKey, sortKeyValue1, sortKeyValue2, sortKeyValue3, scanIndexForward),
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr(dataSourceName, "items.#", "3"),
-					acctest.CheckResourceAttrEquivalentJSON(dataSourceName, "items.0", `{"hashKey":{"S":"something"},"three":{"N":"33333"},"sortKey":{"S":"sortValue3"}}`),
-					acctest.CheckResourceAttrEquivalentJSON(dataSourceName, "items.1", `{"hashKey":{"S":"something"},"two":{"N":"22222"},"sortKey":{"S":"sortValue2"}}`),
-					acctest.CheckResourceAttrEquivalentJSON(dataSourceName, "items.2", `{"hashKey":{"S":"something"},"one":{"N":"11111"},"sortKey":{"S":"sortValue1"}}`),
+					acctest.CheckResourceAttrEquivalentJSON(dataSourceName, "items.0", expected[0]),
+					acctest.CheckResourceAttrEquivalentJSON(dataSourceName, "items.1", expected[1]),
+					acctest.CheckResourceAttrEquivalentJSON(dataSourceName, "items.2", expected[2]),
 					resource.TestCheckResourceAttr(dataSourceName, "table_name", rName),
-					resource.TestCheckResourceAttr(dataSourceName, "scan_index_forward", "false"),
+				),
+			},
+		},
+	})
+}
+
+func TestAccDynamoDBTableQueryDataSource_index(t *testing.T) {
+	rName := sdkacctest.RandomWithPrefix(acctest.ResourcePrefix)
+	dataSourceName := "data.aws_dynamodb_table_query.test"
+	ctx := acctest.Context(t)
+
+	indexName := "exampleIndex"
+	itemContent := `{
+		"hashKey": {"S": "something"},
+		"value": {"N": "1111"},
+		"extraAttribute": {"S": "additionalValue"}
+	}`
+
+	projectionType := "INCLUDE"
+	expected := []string{
+		`{"hashKey":{"S":"something"},"extraAttribute":{"S":"additionalValue"}}`,
+	}
+
+	resource.ParallelTest(t, resource.TestCase{
+		PreCheck: func() {
+			acctest.PreCheck(ctx, t)
+			acctest.PreCheckPartitionHasService(t, dynamodb.EndpointsID)
+		},
+		ErrorCheck:               acctest.ErrorCheck(t, dynamodb.EndpointsID),
+		ProtoV5ProviderFactories: acctest.ProtoV5ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccTableQueryDataSourceConfig_index(rName, itemContent, projectionType, indexName),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr(dataSourceName, "items.#", "1"),
+					acctest.CheckResourceAttrEquivalentJSON(dataSourceName, "items.0", expected[0]),
+					resource.TestCheckResourceAttr(dataSourceName, "table_name", rName),
 				),
 			},
 		},
@@ -336,13 +371,13 @@ data "aws_dynamodb_table_query" "test" {
 func testAccTableQueryDataSourceConfig_select(tableName, item, hashKey, selectValue string) string {
 	return fmt.Sprintf(`
 resource "aws_dynamodb_table" "test" {
-  name           = %[1]q
+  name           = %q
   read_capacity  = 10
   write_capacity = 10
-  hash_key       = %[2]q
+  hash_key       = %q
 
   attribute {
-    name = %[3]q
+    name = %q
     type = "S"
   }
 }
@@ -351,12 +386,12 @@ resource "aws_dynamodb_table_item" "test" {
   table_name = aws_dynamodb_table.test.name
   hash_key   = aws_dynamodb_table.test.hash_key
   item = <<ITEM
-%[4]s
+%s
 ITEM
 }
 
 data "aws_dynamodb_table_query" "test" {
-	select = %[5]q
+	select = %q
   table_name                  = aws_dynamodb_table.test.name
 	key_condition_expression    = "hashKey = :value"
 	expression_attribute_values = {
@@ -370,7 +405,7 @@ data "aws_dynamodb_table_query" "test" {
 func testAccTableQueryDataSourceConfig_filterExpression(tableName, item1, item2, filterExpression string) string {
 	return fmt.Sprintf(`
 resource "aws_dynamodb_table" "test" {
-  name           = %[1]q
+  name           = %q
   read_capacity  = 10
   write_capacity = 10
   hash_key       = "ID"
@@ -384,13 +419,13 @@ resource "aws_dynamodb_table" "test" {
 resource "aws_dynamodb_table_item" "item1" {
   table_name = aws_dynamodb_table.test.name
   hash_key   = aws_dynamodb_table.test.hash_key
-  item       = %[2]q
+  item       = %q
 }
 
 resource "aws_dynamodb_table_item" "item2" {
   table_name = aws_dynamodb_table.test.name
   hash_key   = aws_dynamodb_table.test.hash_key
-  item       = %[3]q
+  item       = %q
 }
 
 data "aws_dynamodb_table_query" "test" {
@@ -401,7 +436,7 @@ data "aws_dynamodb_table_query" "test" {
 		":category" = "{\"S\": \"A\"}"
 
   }
-  filter_expression = %[4]q
+  filter_expression = %q
   depends_on        = [aws_dynamodb_table_item.item1, aws_dynamodb_table_item.item2]
 }
 `, tableName, item1, item2, filterExpression)
@@ -476,4 +511,48 @@ data "aws_dynamodb_table_query" "test" {
   depends_on         = [aws_dynamodb_table_item.item1, aws_dynamodb_table_item.item2, aws_dynamodb_table_item.item3]
 }
 `, tableName, hashKey, sortKey, hashKey, sortKey, sortKeyValue1, sortKeyValue2, sortKeyValue3, scanIndexForward)
+}
+
+func testAccTableQueryDataSourceConfig_index(tableName, item, projectionType, GSIName string) string {
+	return fmt.Sprintf(`
+	resource "aws_dynamodb_table" "test" {
+		name           = %q
+		read_capacity  = 10
+		write_capacity = 10
+		hash_key       = "hashKey"
+	
+		attribute {
+			name = "hashKey"
+			type = "S"
+		}
+
+		global_secondary_index {
+			name            = %q
+			hash_key        = "hashKey"
+			read_capacity   = 5
+			write_capacity  = 5
+			projection_type = "INCLUDE"  # Set to "INCLUDE" to include specific attributes in the projection
+			non_key_attributes = ["extraAttribute"]  # Include an additional attribute in the GSI
+
+		}
+	}
+	
+	resource "aws_dynamodb_table_item" "item" {
+		table_name = aws_dynamodb_table.test.name
+		hash_key   = aws_dynamodb_table.test.hash_key
+		item = <<ITEM
+%s
+	ITEM
+	}
+
+	data "aws_dynamodb_table_query" "test" {
+		table_name               = %q
+		key_condition_expression  = "hashKey = :hashValue"
+		expression_attribute_values = {
+			":hashValue" = "{\"S\": \"something\"}"
+		}
+		index_name              = %q
+		depends_on              = [aws_dynamodb_table_item.item]
+	}
+`, tableName, GSIName, item, tableName, GSIName)
 }

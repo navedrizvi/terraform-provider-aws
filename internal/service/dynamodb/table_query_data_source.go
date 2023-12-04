@@ -166,7 +166,6 @@ func DataSourceTableQuery() *schema.Resource {
 				Type:     schema.TypeString,
 				Optional: true,
 			},
-			// TODO012 - test
 			"index_name": {
 				Type:     schema.TypeString,
 				Optional: true,
@@ -225,7 +224,6 @@ func dataSourceTableQueryRead(ctx context.Context, d *schema.ResourceData, meta 
 	filterExpression := d.Get("filter_expression").(string)
 	indexName := d.Get("index_name").(string)
 
-	// outputLimit, err := d.GetOk("output_limit").(int)
 	var outputLimit *int
 	if v, ok := d.GetOk("output_limit"); ok {
 		value := v.(int)
@@ -283,18 +281,6 @@ func dataSourceTableQueryRead(ctx context.Context, d *schema.ResourceData, meta 
 		in.Select = aws.String(_select)
 	}
 
-	// outputLimit, ok := d.GetOk("output_limit")
-	// if !ok {
-
-	// }
-	// outputLimitInt, err := strconv.Atoi(outputLimit.(string))
-	// if err != nil {
-	// 	// Handle the error (e.g., log, return an error, etc.)
-	// 	return diag.FromErr(err)
-	// }
-	// // Assign the converted value to outputLimit
-	// outputLimit = &outputLimitInt
-
 	var flattenedItems []string
 	itemsProcessed := int64(0)
 	scannedCount := int64(0)
@@ -325,6 +311,9 @@ func dataSourceTableQueryRead(ctx context.Context, d *schema.ResourceData, meta 
 			flattenedItems = append(flattenedItems, flattened)
 
 			itemsProcessed++
+			if outputLimit != nil {
+				fmt.Printf("[ERROR]iiii: %v\n", int64(*outputLimit))
+			}
 			if (outputLimit != nil) && (itemsProcessed >= int64(*outputLimit)) {
 				fmt.Printf("[ERROR]iiii: %v\n", int64(*outputLimit))
 				goto ExitLoop
