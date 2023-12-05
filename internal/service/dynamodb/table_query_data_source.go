@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"strconv"
 	"strings"
 	"time"
@@ -37,15 +38,18 @@ type AttributeValue struct {
 
 func ConvertJSONToAttributeValue(jsonStr string) (*AttributeValue, error) {
 	data := AttributeValue{}
+
 	unescapedJSONStr, err := strconv.Unquote(jsonStr)
 	if err != nil {
-		return nil, err
+		// If unquoting fails, assume the string is unescaped and use it as-is
+		unescapedJSONStr = jsonStr
 	}
 
 	err = json.Unmarshal([]byte(unescapedJSONStr), &data)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error unmarshalling JSON: %v", err)
 	}
+
 	return &data, nil
 }
 
@@ -69,6 +73,7 @@ func ConvertToDynamoAttributeValue(av *AttributeValue) (*dynamodb.AttributeValue
 			bs = append(bs, item)
 		}
 		dynamoAV.BS = bs
+		log.Printf("[ERROR] bss: %v", bs)
 	}
 
 	if av.L != nil {
