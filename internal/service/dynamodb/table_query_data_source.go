@@ -303,7 +303,7 @@ func dataSourceTableQueryRead(ctx context.Context, d *schema.ResourceData, meta 
 
 			itemsProcessed++
 			if (outputLimit != nil) && (itemsProcessed >= int64(*outputLimit)) {
-				goto ExitLoop
+				break
 			}
 		}
 		in.ExclusiveStartKey = out.LastEvaluatedKey
@@ -312,7 +312,6 @@ func dataSourceTableQueryRead(ctx context.Context, d *schema.ResourceData, meta 
 			break
 		}
 	}
-ExitLoop:
 	d.Set("items", flattenedItems)
 	d.Set("item_count", itemCount)
 	d.Set("query_count", queryCount)
