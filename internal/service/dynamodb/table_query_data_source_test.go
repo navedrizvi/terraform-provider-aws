@@ -624,7 +624,7 @@ func generateRandomPayload(sizeKB int) string {
 }
 
 func testAccTableQueryDataSourceConfig_handlesPagination(tableName string) string {
-	a := fmt.Sprintf(`
+	return fmt.Sprintf(`
 resource "aws_dynamodb_table" "test" {
   name           = %q
   read_capacity  = 10
@@ -666,11 +666,10 @@ data "aws_dynamodb_table_query" "test" {
   depends_on                  = [aws_dynamodb_table_item.test[0], aws_dynamodb_table_item.test[1], aws_dynamodb_table_item.test[2], aws_dynamodb_table_item.test[3], aws_dynamodb_table_item.test[4], aws_dynamodb_table_item.test[5], aws_dynamodb_table_item.test[6], aws_dynamodb_table_item.test[7], aws_dynamodb_table_item.test[8], aws_dynamodb_table_item.test[9]]
 }
 `, tableName, generateRandomPayload(300))
-	return a
 }
 
 func testAccTableQueryDataSourceConfig_outputLimit(tableName string, outputLimit int) string {
-	a := fmt.Sprintf(`
+	return fmt.Sprintf(`
 resource "aws_dynamodb_table" "test" {
   name           = %q
   read_capacity  = 10
@@ -713,7 +712,6 @@ data "aws_dynamodb_table_query" "test" {
   depends_on                  = [aws_dynamodb_table_item.test[0], aws_dynamodb_table_item.test[1], aws_dynamodb_table_item.test[2], aws_dynamodb_table_item.test[3], aws_dynamodb_table_item.test[4], aws_dynamodb_table_item.test[5], aws_dynamodb_table_item.test[6], aws_dynamodb_table_item.test[7], aws_dynamodb_table_item.test[8], aws_dynamodb_table_item.test[9]]
 }
 `, tableName, generateRandomPayload(300), outputLimit)
-	return a
 }
 
 func TestConvertJSONToAttributeValue(t *testing.T) {

@@ -172,8 +172,6 @@ func DataSourceTableQuery() *schema.Resource {
 				Type:     schema.TypeString,
 				Optional: true,
 			},
-			// // TODO01 comment that this page-size limit is not being used. we use a global limit. this one is used for pagination
-			// handled by other -- Upto N results - repurposed
 			"output_limit": {
 				Type:     schema.TypeInt,
 				Optional: true,
@@ -200,7 +198,6 @@ func DataSourceTableQuery() *schema.Resource {
 				Type:     schema.TypeInt,
 				Computed: true,
 			},
-			// TODO0 - test handling pagination... (see what is done for )
 			"query_count": {
 				Type:     schema.TypeInt,
 				Computed: true,
@@ -289,9 +286,6 @@ func dataSourceTableQueryRead(ctx context.Context, d *schema.ResourceData, meta 
 
 	for {
 		out, err := conn.QueryWithContext(ctx, in)
-		// fmt.Printf("[ERROR]2 out: %v\n", out.Items)
-		// fmt.Printf("[ERROR]2 out: %v\n", out.Count)
-		// fmt.Printf("[ERROR]2 out: %v\n", out.ScannedCount)
 
 		queryCount += 1
 		if err != nil {
@@ -300,7 +294,6 @@ func dataSourceTableQueryRead(ctx context.Context, d *schema.ResourceData, meta 
 
 		scannedCount += aws.Int64Value(out.ScannedCount)
 		itemCount += aws.Int64Value(out.Count)
-		// fmt.Printf("[ERROR]2 oiiiitems: %v\n", out.Items)
 		for _, item := range out.Items {
 			flattened, err := flattenTableItemAttributes(item)
 			if err != nil {
@@ -310,7 +303,6 @@ func dataSourceTableQueryRead(ctx context.Context, d *schema.ResourceData, meta 
 
 			itemsProcessed++
 			if (outputLimit != nil) && (itemsProcessed >= int64(*outputLimit)) {
-				// fmt.Printf("[ERROR]iiii: %v\n", int64(*outputLimit))
 				goto ExitLoop
 			}
 		}
@@ -325,10 +317,6 @@ ExitLoop:
 	d.Set("item_count", itemCount)
 	d.Set("query_count", queryCount)
 	d.Set("scanned_count", scannedCount)
-	// fmt.Printf("[ERROR]2 items: %v\n", flattenedItems)
-	// fmt.Printf("[ERROR]2 item_count: %v\n", itemCount)
-	// fmt.Printf("[ERROR]2 query_count: %v\n", queryCount)
-	// fmt.Printf("[ERROR]2 scanned_count: %v\n", scannedCount)
 	return nil
 }
 
