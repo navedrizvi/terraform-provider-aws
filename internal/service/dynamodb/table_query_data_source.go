@@ -276,13 +276,14 @@ func dataSourceTableQueryRead(ctx context.Context, d *schema.ResourceData, meta 
 		in.Select = aws.String(_select)
 	}
 
+	id := buildTableQueryDataSourceID(tableName, indexName, keyConditionExpression)
+	d.SetId(id)
+
 	var flattenedItems []string
 	itemsProcessed := int64(0)
 	scannedCount := int64(0)
 	queryCount := int64(0)
 	itemCount := int64(0)
-	id := buildTableQueryDataSourceID(tableName, indexName, keyConditionExpression)
-	d.SetId(id)
 
 	for {
 		out, err := conn.QueryWithContext(ctx, in)

@@ -293,6 +293,7 @@ func TestAccDynamoDBTableQueryDataSource_handlesPagination(t *testing.T) {
 	})
 }
 
+// TODO0 test more...
 func TestAccDynamoDBTableQueryDataSource_outputLimit(t *testing.T) {
 	ctx := acctest.Context(t)
 	rName := sdkacctest.RandomWithPrefix(acctest.ResourcePrefix)
@@ -357,13 +358,13 @@ data "aws_dynamodb_table_query" "test" {
 func testAccTableQueryDataSourceConfig_projectionExpression(tableName, item, projectionExpression, hashKey string) string {
 	return fmt.Sprintf(`
 resource "aws_dynamodb_table" "test" {
-  name           = %[1]q
+  name           = %q
   read_capacity  = 10
   write_capacity = 10
-  hash_key       = %[2]q
+  hash_key       = %q
 
   attribute {
-    name = %[3]q
+    name = %q
     type = "S"
   }
 }
@@ -372,12 +373,12 @@ resource "aws_dynamodb_table_item" "test" {
   table_name = aws_dynamodb_table.test.name
   hash_key   = aws_dynamodb_table.test.hash_key
   item = <<ITEM
-%[4]s
+%s
 ITEM
 }
 
 data "aws_dynamodb_table_query" "test" {
-  projection_expression = %[5]q
+  projection_expression = %q
 	select = "SPECIFIC_ATTRIBUTES"
   table_name                  = aws_dynamodb_table.test.name
 	key_condition_expression    = "hashKey = :value"
@@ -392,13 +393,13 @@ data "aws_dynamodb_table_query" "test" {
 func testAccTableQueryDataSourceConfig_expressionAttributeNames(tableName, item, hashKey string) string {
 	return fmt.Sprintf(`
 resource "aws_dynamodb_table" "test" {
-  name           = %[1]q
+  name           = %q
   read_capacity  = 10
   write_capacity = 10
-  hash_key       = %[2]q
+  hash_key       = %q
 
   attribute {
-    name = %[3]q
+    name = %q
     type = "S"
   }
 }
@@ -407,7 +408,7 @@ resource "aws_dynamodb_table_item" "test" {
   table_name = aws_dynamodb_table.test.name
   hash_key   = aws_dynamodb_table.test.hash_key
   item = <<ITEM
-%[4]s
+%s
 ITEM
 }
 
