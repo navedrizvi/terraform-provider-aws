@@ -266,6 +266,61 @@ func TestAccDynamoDBTableQueryDataSource_index(t *testing.T) {
 	})
 }
 
+func TestAccDynamoDBTableQueryDataSource_handlesPagination(t *testing.T) {
+	ctx := acctest.Context(t)
+	rName := sdkacctest.RandomWithPrefix(acctest.ResourcePrefix)
+	dataSourceName := "data.aws_dynamodb_table_query.test"
+
+	resource.ParallelTest(t, resource.TestCase{
+		PreCheck: func() {
+			acctest.PreCheck(ctx, t)
+			acctest.PreCheckPartitionHasService(t, dynamodb.EndpointsID)
+		},
+		ErrorCheck:               acctest.ErrorCheck(t, dynamodb.EndpointsID),
+		ProtoV5ProviderFactories: acctest.ProtoV5ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccTableQueryDataSourceConfig_handlesPagination(rName),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr(dataSourceName, "items.#", "10"),
+					resource.TestCheckResourceAttr(dataSourceName, "table_name", rName),
+					resource.TestCheckResourceAttr(dataSourceName, "scanned_count", "10"),
+					resource.TestCheckResourceAttr(dataSourceName, "item_count", "10"),
+					resource.TestCheckResourceAttr(dataSourceName, "query_count", "3"),
+				),
+			},
+		},
+	})
+}
+
+func TestAccDynamoDBTableQueryDataSource_outputLimit(t *testing.T) {
+	ctx := acctest.Context(t)
+	rName := sdkacctest.RandomWithPrefix(acctest.ResourcePrefix)
+	dataSourceName := "data.aws_dynamodb_table_query.test"
+
+	outputLimit := 8
+
+	resource.ParallelTest(t, resource.TestCase{
+		PreCheck: func() {
+			acctest.PreCheck(ctx, t)
+			acctest.PreCheckPartitionHasService(t, dynamodb.EndpointsID)
+		},
+		ErrorCheck:               acctest.ErrorCheck(t, dynamodb.EndpointsID),
+		ProtoV5ProviderFactories: acctest.ProtoV5ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccTableQueryDataSourceConfig_outputLimit(rName, outputLimit),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr(dataSourceName, "items.#", "8"),
+					resource.TestCheckResourceAttr(dataSourceName, "table_name", rName),
+					resource.TestCheckResourceAttr(dataSourceName, "item_count", "8"),
+					resource.TestCheckResourceAttr(dataSourceName, "query_count", "3"),
+				),
+			},
+		},
+	})
+}
+
 func testAccTableQueryDataSourceConfig_basic(tableName, item, hashKey string) string {
 	return fmt.Sprintf(`
 resource "aws_dynamodb_table" "test" {
@@ -558,6 +613,107 @@ func testAccTableQueryDataSourceConfig_index(tableName, item, projectionType, GS
 		depends_on              = [aws_dynamodb_table_item.item]
 	}
 `, tableName, GSIName, item, tableName, GSIName)
+}
+
+func generateRandomPayload(sizeKB int) string {
+	payload := make([]byte, sizeKB*1024)
+	for i := range payload {
+		payload[i] = byte('A' + i%26)
+	}
+	return string(payload)
+}
+
+func testAccTableQueryDataSourceConfig_handlesPagination(tableName string) string {
+	a := fmt.Sprintf(`
+resource "aws_dynamodb_table" "test" {
+  name           = %q
+  read_capacity  = 10
+  write_capacity = 10
+  hash_key       = "hashKey"
+	range_key      = "sortKey"
+
+  attribute {
+    name = "hashKey"
+    type = "S"
+  }
+	
+	attribute {
+    name = "sortKey"
+    type = "S"
+  }
+}
+
+resource "aws_dynamodb_table_item" "test" {
+	count = 10
+  table_name = aws_dynamodb_table.test.name
+  hash_key   = aws_dynamodb_table.test.hash_key
+	range_key  = aws_dynamodb_table.test.range_key
+  item = <<ITEM
+	{
+		"hashKey": {"S": "something"},
+		"sortKey": {"S": "sortValue${count.index + 1}"},
+		"payload": {"S": %q}
+	}
+ITEM
+}
+
+data "aws_dynamodb_table_query" "test" {
+  table_name                  = aws_dynamodb_table.test.name
+	key_condition_expression    = "hashKey = :value"
+	expression_attribute_values = {
+		":value"= jsonencode({"S" = "something"})
+	}
+  depends_on                  = [aws_dynamodb_table_item.test[0], aws_dynamodb_table_item.test[1], aws_dynamodb_table_item.test[2], aws_dynamodb_table_item.test[3], aws_dynamodb_table_item.test[4], aws_dynamodb_table_item.test[5], aws_dynamodb_table_item.test[6], aws_dynamodb_table_item.test[7], aws_dynamodb_table_item.test[8], aws_dynamodb_table_item.test[9]]
+}
+`, tableName, generateRandomPayload(300))
+	return a
+}
+
+func testAccTableQueryDataSourceConfig_outputLimit(tableName string, outputLimit int) string {
+	a := fmt.Sprintf(`
+resource "aws_dynamodb_table" "test" {
+  name           = %q
+  read_capacity  = 10
+  write_capacity = 10
+  hash_key       = "hashKey"
+	range_key      = "sortKey"
+
+  attribute {
+    name = "hashKey"
+    type = "S"
+  }
+	
+	attribute {
+    name = "sortKey"
+    type = "S"
+  }
+}
+
+resource "aws_dynamodb_table_item" "test" {
+	count = 10
+  table_name = aws_dynamodb_table.test.name
+  hash_key   = aws_dynamodb_table.test.hash_key
+	range_key  = aws_dynamodb_table.test.range_key
+  item = <<ITEM
+	{
+		"hashKey": {"S": "something"},
+		"sortKey": {"S": "sortValue${count.index + 1}"},
+		"payload": {"S": %q}
+	}
+ITEM
+}
+
+data "aws_dynamodb_table_query" "test" {
+	output_limit 							  = %d
+  table_name                  = aws_dynamodb_table.test.name
+	key_condition_expression    = "hashKey = :value"
+	expression_attribute_values = {
+		":value"= jsonencode({"S" = "something"})
+	}
+  depends_on                  = [aws_dynamodb_table_item.test[0], aws_dynamodb_table_item.test[1], aws_dynamodb_table_item.test[2], aws_dynamodb_table_item.test[3], aws_dynamodb_table_item.test[4], aws_dynamodb_table_item.test[5], aws_dynamodb_table_item.test[6], aws_dynamodb_table_item.test[7], aws_dynamodb_table_item.test[8], aws_dynamodb_table_item.test[9]]
+}
+`, tableName, generateRandomPayload(300), outputLimit)
+	return a
 }
 
 func TestConvertJSONToAttributeValue(t *testing.T) {

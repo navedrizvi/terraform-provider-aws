@@ -7,7 +7,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"strconv"
 	"strings"
 	"time"
@@ -53,7 +52,6 @@ func ConvertJSONToAttributeValue(jsonStr string) (*AttributeValue, error) {
 	return &data, nil
 }
 
-// TODO01 - unit test all attributevalues : Unit test
 func ConvertToDynamoAttributeValue(av *AttributeValue) (*dynamodb.AttributeValue, error) {
 	if av == nil {
 		return nil, nil
@@ -73,7 +71,6 @@ func ConvertToDynamoAttributeValue(av *AttributeValue) (*dynamodb.AttributeValue
 			bs = append(bs, item)
 		}
 		dynamoAV.BS = bs
-		log.Printf("[ERROR] bss: %v", bs)
 	}
 
 	if av.L != nil {
@@ -175,9 +172,8 @@ func DataSourceTableQuery() *schema.Resource {
 				Type:     schema.TypeString,
 				Optional: true,
 			},
-			// // TODO1 comment that this page-size limit is not being used. we use a global limit. this one is used for pagination
+			// // TODO01 comment that this page-size limit is not being used. we use a global limit. this one is used for pagination
 			// handled by other -- Upto N results - repurposed
-			// TODO012 - test Pagination
 			"output_limit": {
 				Type:     schema.TypeInt,
 				Optional: true,
@@ -204,7 +200,7 @@ func DataSourceTableQuery() *schema.Resource {
 				Type:     schema.TypeInt,
 				Computed: true,
 			},
-			// TODO01 - test handling pagination...
+			// TODO0 - test handling pagination... (see what is done for )
 			"query_count": {
 				Type:     schema.TypeInt,
 				Computed: true,
@@ -260,9 +256,6 @@ func dataSourceTableQueryRead(ctx context.Context, d *schema.ResourceData, meta 
 			}
 			attributeValues[key] = dynamoAttributeValue
 		}
-		for key, value := range attributeValues {
-			fmt.Printf("safdsafds %s: %#v\n", key, value)
-		}
 		in.ExpressionAttributeValues = attributeValues
 	}
 
@@ -296,9 +289,9 @@ func dataSourceTableQueryRead(ctx context.Context, d *schema.ResourceData, meta 
 
 	for {
 		out, err := conn.QueryWithContext(ctx, in)
-		fmt.Printf("[ERROR]2 out: %v\n", out.Items)
-		fmt.Printf("[ERROR]2 out: %v\n", out.Count)
-		fmt.Printf("[ERROR]2 out: %v\n", out.ScannedCount)
+		// fmt.Printf("[ERROR]2 out: %v\n", out.Items)
+		// fmt.Printf("[ERROR]2 out: %v\n", out.Count)
+		// fmt.Printf("[ERROR]2 out: %v\n", out.ScannedCount)
 
 		queryCount += 1
 		if err != nil {
@@ -307,7 +300,7 @@ func dataSourceTableQueryRead(ctx context.Context, d *schema.ResourceData, meta 
 
 		scannedCount += aws.Int64Value(out.ScannedCount)
 		itemCount += aws.Int64Value(out.Count)
-		fmt.Printf("[ERROR]2 oiiiitems: %v\n", out.Items)
+		// fmt.Printf("[ERROR]2 oiiiitems: %v\n", out.Items)
 		for _, item := range out.Items {
 			flattened, err := flattenTableItemAttributes(item)
 			if err != nil {
@@ -316,11 +309,8 @@ func dataSourceTableQueryRead(ctx context.Context, d *schema.ResourceData, meta 
 			flattenedItems = append(flattenedItems, flattened)
 
 			itemsProcessed++
-			if outputLimit != nil {
-				fmt.Printf("[ERROR]iiii: %v\n", int64(*outputLimit))
-			}
 			if (outputLimit != nil) && (itemsProcessed >= int64(*outputLimit)) {
-				fmt.Printf("[ERROR]iiii: %v\n", int64(*outputLimit))
+				// fmt.Printf("[ERROR]iiii: %v\n", int64(*outputLimit))
 				goto ExitLoop
 			}
 		}
@@ -335,10 +325,10 @@ ExitLoop:
 	d.Set("item_count", itemCount)
 	d.Set("query_count", queryCount)
 	d.Set("scanned_count", scannedCount)
-	fmt.Printf("[ERROR]2 items: %v\n", flattenedItems)
-	fmt.Printf("[ERROR]2 item_count: %v\n", itemCount)
-	fmt.Printf("[ERROR]2 query_count: %v\n", queryCount)
-	fmt.Printf("[ERROR]2 scanned_count: %v\n", scannedCount)
+	// fmt.Printf("[ERROR]2 items: %v\n", flattenedItems)
+	// fmt.Printf("[ERROR]2 item_count: %v\n", itemCount)
+	// fmt.Printf("[ERROR]2 query_count: %v\n", queryCount)
+	// fmt.Printf("[ERROR]2 scanned_count: %v\n", scannedCount)
 	return nil
 }
 
