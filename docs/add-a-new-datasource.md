@@ -1,4 +1,3 @@
-TODO013
 <!-- markdownlint-configure-file { "code-block-style": false } -->
 # Adding a New Data Source
 
@@ -83,6 +82,7 @@ In order to adequately test the data source we will need to write a complete set
 
 You will need at minimum:
 
+TODO0:
 - Basic Test - Tests full lifecycle (CRUD + Import) of a minimal configuration (all required fields, no optional).
 - Disappears Test - Tests what Terraform does if a resource it is tracking can no longer be found.
 - Per Attribute Tests - For each attribute a test should exists which tests that particular attribute in isolation alongside any required fields.

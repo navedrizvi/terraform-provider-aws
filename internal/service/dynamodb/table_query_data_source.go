@@ -22,6 +22,83 @@ import (
 	"github.com/hashicorp/terraform-provider-aws/names"
 )
 
+// @SDKDataSource("aws_dynamodb_table_query")
+func DataSourceTableQuery() *schema.Resource {
+	return &schema.Resource{
+		ReadWithoutTimeout: dataSourceTableQueryRead,
+
+		Schema: map[string]*schema.Schema{
+			"table_name": {
+				Type:     schema.TypeString,
+				Required: true,
+			},
+			"key_condition_expression": {
+				Type:     schema.TypeString,
+				Required: true,
+			},
+			"consistent_read": {
+				Type:     schema.TypeBool,
+				Optional: true,
+				Default:  false,
+			},
+			"expression_attribute_names": {
+				Type:     schema.TypeMap,
+				Optional: true,
+				Elem:     &schema.Schema{Type: schema.TypeString},
+			},
+			"expression_attribute_values": {
+				Type:     schema.TypeMap,
+				Optional: true,
+				Elem:     &schema.Schema{Type: schema.TypeString},
+			},
+			"filter_expression": {
+				Type:     schema.TypeString,
+				Optional: true,
+			},
+			"index_name": {
+				Type:     schema.TypeString,
+				Optional: true,
+			},
+			"output_limit": {
+				Type:     schema.TypeInt,
+				Optional: true,
+			},
+			"projection_expression": {
+				Type:     schema.TypeString,
+				Optional: true,
+			},
+			"scan_index_forward": {
+				Type:     schema.TypeBool,
+				Optional: true,
+			},
+			"select": {
+				Type:         schema.TypeString,
+				Optional:     true,
+				ValidateFunc: validation.StringInSlice([]string{"ALL_ATTRIBUTES", "ALL_PROJECTED_ATTRIBUTES", "SPECIFIC_ATTRIBUTES", "COUNT"}, false),
+			},
+			"items": {
+				Type:     schema.TypeList,
+				Computed: true,
+				Elem: &schema.Schema{
+					Type: schema.TypeString,
+				},
+			},
+			"scanned_count": {
+				Type:     schema.TypeInt,
+				Computed: true,
+			},
+			"item_count": {
+				Type:     schema.TypeInt,
+				Computed: true,
+			},
+			"query_count": {
+				Type:     schema.TypeInt,
+				Computed: true,
+			},
+		},
+	}
+}
+
 type AttributeValue struct {
 	B    []byte                     `json:"B,omitempty"`
 	BOOL *bool                      `json:"BOOL,omitempty"`
@@ -128,99 +205,20 @@ func ConvertToDynamoAttributeValue(av *AttributeValue) (*dynamodb.AttributeValue
 	return dynamoAV, nil
 }
 
-// @SDKDataSource("aws_dynamodb_table_query")
-func DataSourceTableQuery() *schema.Resource {
-	return &schema.Resource{
-		ReadWithoutTimeout: dataSourceTableQueryRead,
-
-		Schema: map[string]*schema.Schema{
-			"table_name": {
-				Type:     schema.TypeString,
-				Required: true,
-			},
-			"key_condition_expression": {
-				Type:     schema.TypeString,
-				Required: true,
-			},
-			"consistent_read": {
-				Type:     schema.TypeBool,
-				Optional: true,
-				Default:  false,
-			},
-			"items": {
-				Type:     schema.TypeList,
-				Computed: true,
-				Elem: &schema.Schema{
-					Type: schema.TypeString,
-				},
-			},
-			"expression_attribute_names": {
-				Type:     schema.TypeMap,
-				Optional: true,
-				Elem:     &schema.Schema{Type: schema.TypeString},
-			},
-			"expression_attribute_values": {
-				Type:     schema.TypeMap,
-				Optional: true,
-				Elem:     &schema.Schema{Type: schema.TypeString},
-			},
-			"filter_expression": {
-				Type:     schema.TypeString,
-				Optional: true,
-			},
-			"index_name": {
-				Type:     schema.TypeString,
-				Optional: true,
-			},
-			"output_limit": {
-				Type:     schema.TypeInt,
-				Optional: true,
-			},
-			"projection_expression": {
-				Type:     schema.TypeString,
-				Optional: true,
-			},
-			"scan_index_forward": {
-				Type:     schema.TypeBool,
-				Optional: true,
-				Default:  true,
-			},
-			"select": {
-				Type:         schema.TypeString,
-				Optional:     true,
-				ValidateFunc: validation.StringInSlice([]string{"ALL_ATTRIBUTES", "ALL_PROJECTED_ATTRIBUTES", "SPECIFIC_ATTRIBUTES", "COUNT"}, false),
-			},
-			"scanned_count": {
-				Type:     schema.TypeInt,
-				Computed: true,
-			},
-			"item_count": {
-				Type:     schema.TypeInt,
-				Computed: true,
-			},
-			"query_count": {
-				Type:     schema.TypeInt,
-				Computed: true,
-			},
-		},
-	}
-}
 func dataSourceTableQueryRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	conn := meta.(*conns.AWSClient).DynamoDBConn(ctx)
 
 	tableName := d.Get("table_name").(string)
 	keyConditionExpression := d.Get("key_condition_expression").(string)
-	consistentRead := d.Get("consistent_read").(bool)
-	scanIndexForward := d.Get("scan_index_forward").(bool)
 
 	in := &dynamodb.QueryInput{
-		TableName:        aws.String(tableName),
-		ConsistentRead:   aws.Bool(consistentRead),
-		ScanIndexForward: aws.Bool(scanIndexForward),
+		TableName: aws.String(tableName),
 	}
 
 	filterExpression := d.Get("filter_expression").(string)
 	indexName := d.Get("index_name").(string)
+	consistentRead := d.Get("consistent_read").(bool)
+	scanIndexForward := d.Get("scan_index_forward").(bool)
 
 	var outputLimit *int
 	if v, ok := d.GetOk("output_limit"); ok {
@@ -274,6 +272,14 @@ func dataSourceTableQueryRead(ctx context.Context, d *schema.ResourceData, meta 
 
 	if _select != "" {
 		in.Select = aws.String(_select)
+	}
+
+	if consistentRead == true {
+		in.ConsistentRead = aws.String(consistentRead)
+	}
+
+	if scanIndexForward == true {
+		in.ScanIndexForward = aws.String(scanIndexForward)
 	}
 
 	id := buildTableQueryDataSourceID(tableName, indexName, keyConditionExpression)
